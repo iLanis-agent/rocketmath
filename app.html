@@ -1,0 +1,100 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rocketmath - model rocket flight without the guesswork</title>
+<style>
+:root{--bl:#16307a;--ink:#1d1d24;--mut:#5a5a66;--card:#f6f6f9;--ok:#0c7a3d;--bad:#b02020}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:#fff}
+header{padding:28px 20px 8px;max-width:1100px;margin:0 auto}
+h1{font-size:28px;margin:0}h1 span{color:var(--bl)}
+.sub{color:var(--mut);max-width:660px;margin-top:8px;line-height:1.45}
+main{max-width:1100px;margin:24px auto;padding:0 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--card);border-radius:14px;padding:18px}
+.card h2{margin:0 0 12px;font-size:18px}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+input{width:100%;padding:9px 10px;border:1px solid #d5d5de;border-radius:8px;font-size:15px;background:#fff}
+button{margin-top:14px;width:100%;padding:11px;border:0;border-radius:9px;background:var(--bl);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+.big{font-size:34px;font-weight:700;margin:14px 0 2px}
+.cap{font-size:13px;color:var(--mut)}
+.pill{display:inline-block;margin-top:10px;padding:4px 12px;border-radius:999px;font-size:13px;font-weight:600}
+.pill.ok{background:#e2f4e8;color:var(--ok)}.pill.bad{background:#fbe3e3;color:var(--bad)}.pill.note{background:#e8ecf8;color:#2b3f8f}
+table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}
+td{padding:7px 0;border-bottom:1px solid #e3e3ea}td+td{text-align:right;font-weight:600}
+.err{color:var(--bad);font-size:14px;margin-top:10px;min-height:1em}
+.note{font-size:12.5px;color:var(--mut);margin-top:10px;line-height:1.4}
+</style></head><body>
+<header><h1>Rocket<span>math</span></h1>
+<p class="sub">The motor casing says "up to 300 feet." Your rocket reads the wind instead. Enter the motor and the airframe; get the simulated apogee, the right ejection delay, the chute size that lands soft, and how far you will walk to get it back.</p></header>
+<main>
+<section class="card"><h2>Flight</h2>
+<label>Rocket mass, empty (g)</label><input id="f_m" type="number" step="1" value="40">
+<label>Motor propellant (g, C6 ~3.1)</label><input id="f_p" type="number" step="0.1" value="3.1">
+<label>Average thrust (N, C6 = 6)</label><input id="f_t" type="number" step="0.5" value="6">
+<label>Burn time (s, C6 ~1.6)</label><input id="f_b" type="number" step="0.1" value="1.6">
+<label>Body diameter (mm)</label><input id="f_d" type="number" step="0.1" value="24.8">
+<label>Drag coefficient (~0.6 typical)</label><input id="f_c" type="number" step="0.05" value="0.6">
+<button id="f_go">Fly it</button>
+<div class="err" id="f_err"></div>
+<div class="big" id="f_big">-</div><div class="cap">simulated apogee</div>
+<div id="f_pill"></div>
+<table id="f_rows"></table>
+<p class="note">Labeled model: vertical point-mass, constant g and air density, fixed Cd, linear propellant burn. Numbers come from the thrust and burn time printed on the motor.</p></section>
+
+<section class="card"><h2>Ejection delay</h2>
+<label>Candidate delays, seconds (comma list)</label><input id="d_l" type="text" value="3, 5, 7">
+<button id="d_go">Pick the delay</button>
+<div class="err" id="d_err"></div>
+<div class="big" id="d_big">-</div><div class="cap">best delay of the set</div>
+<div id="d_pill"></div>
+<table id="d_rows"></table>
+<p class="note">Ejection should fire at apogee. Firing early or late means the chute opens at speed - that is how shock cords snap. Guidance: standard hobby practice, labeled.</p></section>
+
+<section class="card"><h2>Parachute</h2>
+<label>Chute diameter (mm)</label><input id="c_d" type="number" step="10" value="450">
+<button id="c_go">Size the chute</button>
+<div class="err" id="c_err"></div>
+<div class="big" id="c_big">-</div><div class="cap">descent rate under canopy</div>
+<div id="c_pill"></div>
+<table id="c_rows"></table>
+<p class="note">Terminal velocity from drag equilibrium, Cd 0.8 flat-sheet chute (labeled default). Under ~4.5 m/s lands soft; over ~6 m/s starts breaking fins. Descent time assumes terminal speed the whole way.</p></section>
+
+<section class="card"><h2>Recovery walk</h2>
+<label>Wind (m/s, steady, labeled simplification)</label><input id="w_w" type="number" step="0.5" value="3">
+<button id="w_go">Pace it off</button>
+<div class="err" id="w_err"></div>
+<div class="big" id="w_big">-</div><div class="cap">downwind drift from the pad</div>
+<div id="w_pill"></div>
+<table id="w_rows"></table>
+<p class="note">Descent time times wind. Real wind shears with altitude - treat this as the honest minimum walk.</p></section>
+</main>
+<script src="engine.js?v=1"></script>
+<script>
+const $=id=>document.getElementById(id);
+const run=(eid,fn,draw)=>{const e=$(eid);try{e.textContent='';draw(fn());}catch(err){e.textContent=err.message;}};
+const row=(k,v)=>`<tr><td>${k}</td><td>${v}</td></tr>`;
+const pill=(id,cls,txt)=>{$(id).innerHTML=`<span class="pill ${cls}">${txt}</span>`;};
+function fIn(){return [+$('f_m').value,+$('f_p').value,+$('f_t').value,+$('f_b').value,+$('f_d').value,+$('f_c').value];}
+let lastApogee=null,lastDescent=null;
+function fGo(){run('f_err',()=>Rocketmath.flight(...fIn()),r=>{
+  lastApogee=r.apogeeM;
+  $('f_big').textContent=r.apogeeM.toFixed(0)+' m';
+  pill('f_pill','ok','apogee '+r.tApogeeS.toFixed(1)+' s after launch');
+  $('f_rows').innerHTML=row('speed at burnout',r.vBurn.toFixed(1)+' m/s')+row('altitude at burnout',r.altBurn.toFixed(0)+' m')+row('coast to apogee',r.coastS.toFixed(1)+' s');});}
+function dGo(){run('d_err',()=>{const a=fIn();const ds=$('d_l').value.split(',').map(s=>parseFloat(s.trim())).filter(x=>!isNaN(x));return Rocketmath.delayPick(a[0],a[1],a[2],a[3],a[4],a[5],ds);},r=>{
+  $('d_big').textContent=r.bestDelayS===null?'none':r.bestDelayS+' s';
+  if(r.bestSpeedMps!==null&&r.bestSpeedMps<3){pill('d_pill','ok','ejects within '+r.bestSpeedMps.toFixed(1)+' m/s of apogee');}
+  else if(r.bestSpeedMps!==null&&r.bestSpeedMps<15){pill('d_pill','note','best option still opens at '+r.bestSpeedMps.toFixed(1)+' m/s');}
+  else{pill('d_pill','bad','every option opens fast - rethink motor or mass');}
+  $('d_rows').innerHTML=r.rows.map(x=>row(x.delayS+' s delay',x.speedMps===null?'-':x.speedMps.toFixed(1)+' m/s '+x.phase)).join('')+row('coast to apogee',r.coastS.toFixed(1)+' s');});}
+function cGo(){run('c_err',()=>{const m=+$('f_m').value;const ap=lastApogee||300;return Rocketmath.descent(m,+$('c_d').value,ap);},r=>{
+  lastDescent=r.descentS;
+  $('c_big').textContent=r.vTerm.toFixed(1)+' m/s';
+  pill('c_pill',r.vTerm<4.5?'ok':(r.vTerm<6?'note':'bad'),r.vTerm<4.5?'lands soft':(r.vTerm<6?'firm landing - expect dings':'too fast - fins at risk'));
+  $('c_rows').innerHTML=row('descent from apogee',r.descentS.toFixed(0)+' s')+row('canopy area',r.areaM2.toFixed(2)+' m&sup2;');});}
+function wGo(){run('w_err',()=>{const ds=lastDescent||60;return Rocketmath.drift(+$('w_w').value,ds);},r=>{
+  $('w_big').textContent=r.driftM.toFixed(0)+' m';
+  pill('w_pill',r.driftM<200?'ok':'note',r.driftM<200?'stays in the field':'bring binoculars');
+  $('w_rows').innerHTML=row('descent time used',(lastDescent||60).toFixed(0)+' s');});}
+$('f_go').onclick=()=>{fGo();dGo();cGo();wGo();};
+$('d_go').onclick=dGo;$('c_go').onclick=()=>{cGo();wGo();};$('w_go').onclick=wGo;
+fGo();dGo();cGo();wGo();
+</script></body></html>
